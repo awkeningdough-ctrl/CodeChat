@@ -64,20 +64,27 @@
     display: block; font-size: 10px; letter-spacing: 2px; color: var(--paper-dim);
     margin-bottom: 8px; font-weight: 600;
   }
-  .code-display input, .code-entry input {
-    width: 100%; background: var(--ink); border: 1px solid var(--line); color: var(--amber);
-    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 20px;
-    letter-spacing: 8px; padding: 10px 12px; border-radius: 3px;
-    background-image: repeating-linear-gradient(90deg, transparent, transparent calc(16.6% - 1px), var(--line) calc(16.6% - 1px), var(--line) 16.6%);
+  .code-box { position: relative; }
+  .cells { display: flex; gap: 6px; }
+  .cell {
+    flex: 1; height: 42px; display: flex; align-items: center; justify-content: center;
+    background: var(--ink); border: 1px solid var(--line); border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 19px; color: var(--amber);
   }
-  .code-entry { display: flex; gap: 8px; }
-  .code-entry input {
-    color: var(--paper); text-transform: uppercase;
+  .code-entry .cell { color: var(--paper); }
+  .code-box.focused .cell { border-color: var(--amber); }
+  /* the real input sits invisibly on top so typing/selection/readonly all work normally;
+     only its caret is visible, the character glyphs render in the cells above instead */
+  .code-box input {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    background: transparent; border: none; color: transparent; caret-color: var(--amber);
+    font-family: 'IBM Plex Mono', monospace; font-size: 19px; letter-spacing: 6px;
+    padding: 0 4px; text-transform: uppercase;
   }
-  .code-entry input::placeholder { color: var(--paper-dim); letter-spacing: 4px; }
-  .code-entry input:focus, .code-display input:focus {
-    outline: none; border-color: var(--amber);
-  }
+  .code-box input::placeholder { color: transparent; }
+  .code-box input:focus { outline: none; }
+  .code-entry { display: flex; gap: 8px; align-items: stretch; }
+  .code-entry .code-box { flex: 1; }
   .channel-block button {
     background: transparent; border: 1px solid var(--amber-dim); color: var(--amber);
     font-family: inherit; font-weight: 600; letter-spacing: 2px; font-size: 11px;
@@ -122,7 +129,7 @@
 
   @media (max-width: 640px) {
     .console { flex-direction: column; }
-    .code-display input, .code-entry input { font-size: 16px; letter-spacing: 4px; }
+    .cell { font-size: 16px; height: 36px; }
   }
 </style>
 </head>
@@ -136,12 +143,24 @@
 <section class="console">
   <div class="channel-block">
     <label>Your channel — share with a peer</label>
-    <div class="code-display"><input id="myIdField" readonly></div>
+    <div class="code-box" id="myIdBox">
+      <div class="cells" data-target="myIdField">
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+      </div>
+      <input id="myIdField" readonly>
+    </div>
   </div>
   <div class="channel-block">
     <label>Peer channel</label>
     <div class="code-entry">
-      <input id="peerIdField" placeholder="——————" maxlength="6">
+      <div class="code-box" id="peerIdBox">
+        <div class="cells" data-target="peerIdField">
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        </div>
+        <input id="peerIdField" maxlength="6">
+      </div>
       <button id="connectBtn">CONNECT</button>
     </div>
   </div>

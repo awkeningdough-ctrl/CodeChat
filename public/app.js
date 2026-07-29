@@ -8,6 +8,18 @@ const peers = {}; // peerCode -> { keyPair, sharedKey }
 
 const el = (id) => document.getElementById(id);
 
+// Keeps the visual per-character cells in sync with an input's actual value,
+// whether the value changed from typing or was set programmatically.
+function syncCells(inputId) {
+  const input = el(inputId);
+  const cells = document.querySelectorAll(`.cells[data-target="${inputId}"] .cell`);
+  const val = input.value.toUpperCase();
+  cells.forEach((c, i) => { c.textContent = val[i] || ''; });
+}
+el('peerIdField').addEventListener('input', () => syncCells('peerIdField'));
+el('peerIdField').addEventListener('focus', () => el('peerIdBox').classList.add('focused'));
+el('peerIdField').addEventListener('blur', () => el('peerIdBox').classList.remove('focused'));
+
 function setStatus(state) {
   const dot = el('statusDot');
   dot.classList.remove('live', 'down');
@@ -29,6 +41,7 @@ ws.addEventListener('message', async (ev) => {
     setStatus('live');
     el('myIdBadge').textContent = `channel ${myCode} open`;
     el('myIdField').value = myCode;
+    syncCells('myIdField');
   }
 
   if (msg.type === 'chat') {
@@ -103,7 +116,7 @@ async function handleIncomingChat(from, ciphertextRaw) {
       false,
       ['encrypt', 'decrypt']
     );
-    if (!el('peerIdField').value) el('peerIdField').value = from;
+    if (!el('peerIdField').value) { el('peerIdField').value = from; syncCells('peerIdField'); }
     appendLine('system', '--', `secure channel established with ${from}`);
     return;
   }

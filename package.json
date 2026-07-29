@@ -1,0 +1,16 @@
+{
+  "name": "codechat",
+  "version": "1.0.0",
+  "description": "Code-based E2E encrypted chat, no downloads required",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.21.1"
+  }
+}

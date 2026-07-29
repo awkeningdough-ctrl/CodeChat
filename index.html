@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeChat</title>
+<style>
+  :root {
+    --bg: #0e1117; --panel: #161b22; --border: #2a3140; --text: #e6edf3; --accent: #4f8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .id-badge { font-size: 12px; color: #8b949e; margin-left: 8px; }
+
+  main { flex: 1; display: flex; overflow: hidden; }
+  .sidebar { width: 240px; border-right: 1px solid var(--border); padding: 14px; background: var(--panel); }
+  .sidebar label { font-size: 12px; color: #8b949e; display: block; margin-bottom: 6px; }
+  .sidebar input {
+    width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: #0d1117; color: var(--text); margin-bottom: 10px; font-family: monospace; letter-spacing: 2px;
+  }
+  .sidebar button {
+    width: 100%; padding: 8px; border-radius: 6px; border: none;
+    background: var(--accent); color: white; cursor: pointer;
+  }
+  .sidebar p { font-size: 11px; color: #8b949e; margin-top: 14px; }
+
+  .chat-area { flex: 1; display: flex; flex-direction: column; }
+  .messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 60%; padding: 8px 12px; border-radius: 10px; font-size: 14px; }
+  .msg.mine { align-self: flex-end; background: var(--accent); }
+  .msg.theirs { align-self: flex-start; background: #21262d; }
+  .msg.system { align-self: center; background: none; color: #8b949e; font-size: 12px; }
+  .compose { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+  .compose input {
+    flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: #0d1117; color: var(--text);
+  }
+  .compose button { padding: 10px 16px; border-radius: 8px; border: none; background: var(--accent); color: white; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CodeChat <span class="id-badge" id="myIdBadge">connecting…</span></h1>
+</header>
+
+<main>
+  <div class="sidebar">
+    <label>Your code (share with a peer)</label>
+    <input id="myIdField" readonly>
+    <label>Peer code to chat with</label>
+    <input id="peerIdField" placeholder="ABC123" maxlength="6" style="text-transform:uppercase;">
+    <button id="connectBtn">Connect</button>
+    <p>Messages are encrypted in your browser (ECDH P-256 + AES-GCM) before they
+      ever leave your machine. The server only ever sees ciphertext.</p>
+  </div>
+
+  <div class="chat-area">
+    <div class="messages" id="messages"></div>
+    <div class="compose">
+      <input id="msgInput" placeholder="Type a message…">
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

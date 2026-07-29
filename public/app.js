@@ -8,15 +8,26 @@ const peers = {}; // peerCode -> { keyPair, sharedKey }
 
 const el = (id) => document.getElementById(id);
 
+function setStatus(state) {
+  const dot = el('statusDot');
+  dot.classList.remove('live', 'down');
+  if (state) dot.classList.add(state);
+}
+
 ws.addEventListener('open', () => {});
-ws.addEventListener('close', () => appendMessage('(disconnected from server)', 'system'));
+ws.addEventListener('close', () => {
+  setStatus('down');
+  el('myIdBadge').textContent = 'disconnected';
+  appendLine('system', '--', 'connection to relay lost');
+});
 
 ws.addEventListener('message', async (ev) => {
   const msg = JSON.parse(ev.data);
 
   if (msg.type === 'ready') {
     myCode = msg.code;
-    el('myIdBadge').textContent = `(${myCode})`;
+    setStatus('live');
+    el('myIdBadge').textContent = `channel ${myCode} open`;
     el('myIdField').value = myCode;
   }
 
@@ -25,15 +36,24 @@ ws.addEventListener('message', async (ev) => {
   }
 
   if (msg.type === 'chat_error') {
-    appendMessage(`(couldn't reach ${msg.to} — check the code)`, 'system');
+    appendLine('system', '--', `couldn't reach ${msg.to} — check the code`);
   }
 });
 
-function appendMessage(text, cls) {
-  const div = document.createElement('div');
-  div.className = `msg ${cls}`;
-  div.textContent = text;
-  el('messages').appendChild(div);
+// --- Transcript rendering ------------------------------------------------
+function timestamp() {
+  const d = new Date();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${hh}${mm}Z`;
+}
+
+function appendLine(cls, marker, text) {
+  const row = document.createElement('div');
+  row.className = `line ${cls}`;
+  row.innerHTML = `<span class="ts">${timestamp()}</span><span class="marker">${marker}</span><span class="body"></span>`;
+  row.querySelector('.body').textContent = text;
+  el('messages').appendChild(row);
   el('messages').scrollTop = el('messages').scrollHeight;
 }
 
@@ -53,7 +73,7 @@ el('connectBtn').addEventListener('click', async () => {
     to: peerCode,
     ciphertext: JSON.stringify({ kind: 'handshake', pub: Array.from(new Uint8Array(rawPub)) })
   }));
-  appendMessage(`(starting a secure connection with ${peerCode}…)`, 'system');
+  appendLine('system', '--', `opening secure channel with ${peerCode}…`);
 });
 
 async function handleIncomingChat(from, ciphertextRaw) {
@@ -84,7 +104,7 @@ async function handleIncomingChat(from, ciphertextRaw) {
       ['encrypt', 'decrypt']
     );
     if (!el('peerIdField').value) el('peerIdField').value = from;
-    appendMessage(`(secure channel established with ${from})`, 'system');
+    appendLine('system', '--', `secure channel established with ${from}`);
     return;
   }
 
@@ -95,9 +115,9 @@ async function handleIncomingChat(from, ciphertextRaw) {
     const data = new Uint8Array(payload.data);
     try {
       const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, peer.sharedKey, data);
-      appendMessage(new TextDecoder().decode(plainBuf), 'theirs');
+      appendLine('theirs', '<<', new TextDecoder().decode(plainBuf));
     } catch {
-      appendMessage('(failed to decrypt message)', 'system');
+      appendLine('system', '--', 'failed to decrypt message');
     }
   }
 }
@@ -111,7 +131,7 @@ async function sendMessage() {
   if (!peerCode || !text) return;
   const peer = peers[peerCode];
   if (!peer || !peer.sharedKey) {
-    appendMessage('(no secure channel yet — click Connect first and wait for it to establish)', 'system');
+    appendLine('system', '--', 'no secure channel yet — click Connect first and wait for it to establish');
     return;
   }
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -121,6 +141,17 @@ async function sendMessage() {
     to: peerCode,
     ciphertext: JSON.stringify({ kind: 'msg', iv: Array.from(iv), data: Array.from(new Uint8Array(data)) })
   }));
-  appendMessage(text, 'mine');
+  appendLine('mine', '>>', text);
   el('msgInput').value = '';
 }
+
+// --- Station clock ---------------------------------------------------------
+function tickClock() {
+  const d = new Date();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  el('clock').textContent = `${hh}:${mm}:${ss}Z`;
+}
+tickClock();
+setInterval(tickClock, 1000);

@@ -39,7 +39,6 @@
     overflow: hidden;
   }
 
-  /* ── Ambient Background ── */
   .ambient {
     position: fixed;
     inset: 0;
@@ -58,7 +57,6 @@
     .ambient { animation: none; opacity: 0.4; }
   }
 
-  /* Scanline texture */
   .scanlines {
     position: fixed;
     inset: 0;
@@ -74,7 +72,6 @@
     opacity: 0.3;
   }
 
-  /* ── Layout ── */
   .app {
     position: relative;
     z-index: 2;
@@ -83,7 +80,6 @@
     flex-direction: column;
   }
 
-  /* ── Header ── */
   .topbar {
     display: flex;
     align-items: center;
@@ -165,14 +161,12 @@
     text-align: right;
   }
 
-  /* ── Main Workspace ── */
   .workspace {
     flex: 1;
     display: flex;
     overflow: hidden;
   }
 
-  /* ── Sidebar (Connection Panel) ── */
   .sidebar {
     width: 380px;
     flex-shrink: 0;
@@ -182,7 +176,7 @@
     display: flex;
     flex-direction: column;
     padding: 28px;
-    gap: 32px;
+    gap: 24px;
     overflow-y: auto;
   }
   .panel-title {
@@ -194,7 +188,6 @@
     font-weight: 600;
   }
 
-  /* Your Channel */
   .channel-card {
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -257,7 +250,6 @@
     border-color: var(--cyan);
   }
 
-  /* Peer Entry */
   .peer-entry {
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -372,7 +364,6 @@
     border-color: var(--line);
   }
 
-  /* Encryption Status */
   .crypto-status {
     margin-top: auto;
     padding: 16px;
@@ -407,7 +398,62 @@
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* ── Chat Area ── */
+  /* Active Users Panel */
+  .active-users {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .active-users::-webkit-scrollbar { width: 4px; }
+  .active-users::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 2px;
+  }
+  .user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 4px;
+  }
+  .user-item:last-child { margin-bottom: 0; }
+  .user-item:hover {
+    background: rgba(255,255,255,0.03);
+  }
+  .user-item .code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .user-item .badge {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 6px var(--cyan-glow);
+  }
+  .user-item.me .code {
+    color: var(--amber);
+  }
+  .user-item.me .badge {
+    background: var(--amber);
+    box-shadow: 0 0 6px var(--amber-glow);
+  }
+  .empty-users {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
   .chat-area {
     flex: 1;
     display: flex;
@@ -415,9 +461,60 @@
     background: rgba(3, 4, 10, 0.4);
     position: relative;
   }
+
+  .chat-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(10, 11, 20, 0.6);
+    flex-shrink: 0;
+  }
+  .chat-tab {
+    flex: 1;
+    padding: 14px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .chat-tab:hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.02);
+  }
+  .chat-tab.active {
+    color: var(--cyan);
+  }
+  .chat-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan-glow);
+  }
+  .chat-tab .badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 100px;
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    font-size: 10px;
+    min-width: 18px;
+    text-align: center;
+  }
+
   .chat-empty {
     position: absolute;
-    inset: 0;
+    inset: 48px 0 0 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -426,6 +523,7 @@
     color: var(--text-muted);
     pointer-events: none;
     transition: opacity 0.5s;
+    z-index: 5;
   }
   .chat-empty.hidden { opacity: 0; }
   .empty-icon {
@@ -466,7 +564,6 @@
     border-radius: 3px;
   }
 
-  /* Message Bubbles */
   .msg {
     max-width: 70%;
     display: flex;
@@ -486,6 +583,8 @@
   .msg.mine { align-self: flex-end; align-items: flex-end; }
   .msg.theirs { align-self: flex-start; align-items: flex-start; }
   .msg.system { align-self: center; align-items: center; max-width: 90%; }
+  .msg.global { align-self: flex-start; align-items: flex-start; }
+  .msg.global.mine { align-self: flex-end; align-items: flex-end; }
 
   .msg-bubble {
     padding: 12px 16px;
@@ -517,7 +616,26 @@
     font-size: 12px;
     padding: 8px 16px;
   }
+  .msg.global .msg-bubble {
+    background: linear-gradient(135deg, rgba(100,100,255,0.08), rgba(100,100,255,0.02));
+    border: 1px solid rgba(100,100,255,0.15);
+    color: var(--text);
+    border-bottom-left-radius: var(--radius-sm);
+  }
+  .msg.global.mine .msg-bubble {
+    background: linear-gradient(135deg, rgba(100,255,100,0.08), rgba(100,255,100,0.02));
+    border: 1px solid rgba(100,255,100,0.15);
+    border-bottom-left-radius: var(--radius-lg);
+    border-bottom-right-radius: var(--radius-sm);
+  }
 
+  .msg-sender {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
   .msg-meta {
     font-size: 10px;
     color: var(--text-muted);
@@ -527,7 +645,39 @@
   }
   .msg:hover .msg-meta { opacity: 1; }
 
-  /* ── Input Area ── */
+  .typing-indicator {
+    padding: 4px 32px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-style: italic;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .typing-indicator.visible { opacity: 1; }
+  .typing-dots {
+    display: flex;
+    gap: 3px;
+  }
+  .typing-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--cyan);
+    animation: typingBounce 1.4s infinite ease-in-out both;
+  }
+  .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+  .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+  @keyframes typingBounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+  }
+
   .composer {
     padding: 20px 32px 28px;
     border-top: 1px solid var(--panel-border);
@@ -537,13 +687,14 @@
     gap: 12px;
     align-items: center;
     flex-shrink: 0;
+    position: relative;
   }
   .composer-input-wrap {
     flex: 1;
     position: relative;
   }
   .composer-input-wrap::before {
-    content: '›';
+    content: '>';
     position: absolute;
     left: 16px;
     top: 50%;
@@ -570,6 +721,34 @@
     box-shadow: 0 0 0 3px var(--amber-dim), inset 0 0 20px rgba(255,184,0,0.03);
   }
   .composer input::placeholder { color: var(--text-muted); }
+
+  .sticker-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    background: var(--void);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    font-size: 20px;
+  }
+  .sticker-btn:hover {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: var(--amber-dim);
+    transform: scale(1.05);
+  }
+  .sticker-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: var(--amber-dim);
+  }
+
   .send-btn {
     width: 44px;
     height: 44px;
@@ -591,7 +770,42 @@
   .send-btn:active { transform: scale(0.95); }
   .send-btn svg { width: 18px; height: 18px; }
 
-  /* ── Mobile ── */
+  .sticker-picker {
+    position: absolute;
+    bottom: 88px;
+    left: 32px;
+    right: 32px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+    gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    z-index: 10;
+  }
+  .sticker-picker.visible { display: grid; }
+  .sticker-item {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--void);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 24px;
+  }
+  .sticker-item:hover {
+    border-color: var(--amber);
+    background: var(--amber-dim);
+    transform: scale(1.1);
+  }
+
   @media (max-width: 900px) {
     .workspace { flex-direction: column; overflow-y: auto; }
     .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--panel-border); padding: 20px; gap: 20px; }
@@ -599,9 +813,9 @@
     .messages { padding: 16px; }
     .composer { padding: 16px; }
     .msg { max-width: 85%; }
+    .sticker-picker { left: 16px; right: 16px; }
   }
 
-  /* ── Utility ── */
   .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
@@ -671,6 +885,13 @@
         </div>
       </div>
 
+      <div>
+        <div class="panel-title">Active Users</div>
+        <div class="active-users" id="activeUsers">
+          <div class="empty-users">No users online</div>
+        </div>
+      </div>
+
       <div class="crypto-status">
         <div class="crypto-row">
           <span>Transport</span>
@@ -691,6 +912,15 @@
     </aside>
 
     <main class="chat-area">
+      <div class="chat-tabs" id="chatTabs">
+        <button class="chat-tab active" data-mode="peer" id="tabPeer">
+          PEER<span class="badge" id="peerBadge" style="display:none">0</span>
+        </button>
+        <button class="chat-tab" data-mode="global" id="tabGlobal">
+          GLOBAL<span class="badge" id="globalBadge" style="display:none">0</span>
+        </button>
+      </div>
+
       <div class="chat-empty" id="chatEmpty">
         <div class="empty-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -704,10 +934,20 @@
 
       <div class="messages" id="messages" aria-live="polite" aria-atomic="false"></div>
 
+      <div class="typing-indicator" id="typingIndicator">
+        <span id="typingText">Peer is typing</span>
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <div class="sticker-picker" id="stickerPicker"></div>
+
       <div class="composer">
         <div class="composer-input-wrap">
           <input id="msgInput" placeholder="Type a secure message…" autocomplete="off" aria-label="Message input">
         </div>
+        <button class="sticker-btn" id="stickerBtn" aria-label="Open stickers">☺</button>
         <button class="send-btn" id="sendBtn" aria-label="Send message">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>

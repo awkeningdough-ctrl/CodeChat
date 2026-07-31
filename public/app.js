@@ -7,16 +7,33 @@ let myCode = null;
 const peers = {}; // peerCode -> { keyPair, sharedKey }
 
 // App state
-let chatMode = 'peer'; // 'peer' or 'global'
+let chatMode = 'peer';
 let peerCode = '';
 let typingTimeout = null;
-let isTyping = false;
+let isRecording = false;
 let unreadPeer = 0;
 let unreadGlobal = 0;
 
+// Message store
+const messages = [];
+const messageMap = new Map(); // id -> message data
+
+// Voice recording state
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimer = null;
+let recordingSeconds = 0;
+let audioContext = null;
+let analyser = null;
+let microphoneStream = null;
+let animationId = null;
+
+// Active audio players
+const activePlayers = new Map(); // url -> { audio, btn, bar, timeEl }
+
 const el = (id) => document.getElementById(id);
 
-// ── Built-in Stickers (SVG emoji-like, not GIFs) ──
+// ── Constants ──
 const STICKERS = [
   { id: 'fire',    svg: '<svg viewBox="0 0 24 24" fill="none" stroke="#ff6b35" stroke-width="2"><path d="M12 2c0 4-4 6-4 10 0 3 2 6 4 8 2-2 4-5 4-8 0-4-4-6-4-10z"/><path d="M12 14c-1 0-2 1-2 2s1 2 2 2 2-1 2-2-1-2-2-2z"/></svg>' },
   { id: 'heart',   svg: '<svg viewBox="0 0 24 24" fill="#ff4d6d" stroke="#ff4d6d" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' },
@@ -36,7 +53,16 @@ const STICKERS = [
   { id: 'key',     svg: '<svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>' },
 ];
 
-// ── UI Helpers ──
+const REACTION_EMOJIS = ['👍','❤️','😂','😮','😢','🔥','👏','🎉'];
+
+// ── Helpers ──
+function generateId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(4)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
+}
+
 function setStatus(state) {
   const dot = el('statusDot');
   dot.classList.remove('live', 'down');
@@ -53,6 +79,34 @@ function setShield(status, text) {
 
 function setCryptoProgress(pct) {
   el('cryptoBar').style.width = pct + '%';
+}
+
+function timestamp() {
+  const d = new Date();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function getMetaLabel(m) {
+  if (m.cls === 'mine') return 'encrypted out';
+  if (m.cls === 'theirs') return 'encrypted in';
+  if (m.cls === 'global') return 'global in';
+  if (m.cls === 'global mine') return 'global out';
+  if (m.cls === 'system') return 'system';
+  return '';
 }
 
 // ── Code Cell Sync ──
@@ -72,7 +126,6 @@ function syncCells(inputId) {
   });
 }
 
-// Peer input listeners
 el('peerIdField').addEventListener('input', () => syncCells('peerIdField'));
 el('peerIdField').addEventListener('focus', () => {
   el('peerIdBox').classList.add('focused');
@@ -91,15 +144,11 @@ el('copyBtn').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(myCode);
     const btn = el('copyBtn');
-    const original = btn.textContent;
     btn.textContent = 'COPIED';
     btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.classList.remove('copied');
-    }, 1500);
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
   } catch (e) {
-    el('myIdField')?.select();
+    // silent fail
   }
 });
 
@@ -108,25 +157,9 @@ function setChatMode(mode) {
   chatMode = mode;
   el('tabPeer').classList.toggle('active', mode === 'peer');
   el('tabGlobal').classList.toggle('active', mode === 'global');
-
-  // Update placeholder
-  const input = el('msgInput');
-  if (mode === 'peer') {
-    input.placeholder = 'Type a secure message…';
-  } else {
-    input.placeholder = 'Type a global message…';
-  }
-
-  // Clear unread badge
-  if (mode === 'peer') {
-    unreadPeer = 0;
-    el('peerBadge').style.display = 'none';
-  } else {
-    unreadGlobal = 0;
-    el('globalBadge').style.display = 'none';
-  }
-
-  // Re-render messages for current mode
+  el('msgInput').placeholder = mode === 'peer' ? 'Type a secure message…' : 'Type a global message…';
+  if (mode === 'peer') { unreadPeer = 0; el('peerBadge').style.display = 'none'; }
+  else { unreadGlobal = 0; el('globalBadge').style.display = 'none'; }
   renderMessages();
   updateEmptyState();
 }
@@ -186,7 +219,6 @@ el('stickerBtn').addEventListener('click', () => {
   btn.classList.toggle('active', !visible);
 });
 
-// Close sticker picker on outside click
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.sticker-picker') && !e.target.closest('.sticker-btn')) {
     el('stickerPicker').classList.remove('visible');
@@ -194,72 +226,21 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ── Message History ──
-const messages = []; // { mode, cls, text, sticker, from, ts }
-
-function renderMessages() {
-  const container = el('messages');
-  container.innerHTML = '';
-
-  const filtered = messages.filter(m => m.mode === chatMode);
-  if (filtered.length === 0) {
-    updateEmptyState();
-    return;
-  }
-  el('chatEmpty').classList.add('hidden');
-
-  filtered.forEach(m => appendMessageToDOM(m));
-  container.scrollTop = container.scrollHeight;
-}
-
-function appendMessageToDOM(m) {
-  const container = el('messages');
-
-  const msg = document.createElement('div');
-  msg.className = `msg ${m.cls}`;
-
-  const ts = m.ts;
-  const isSystem = m.cls === 'system';
-  const isSticker = !!m.sticker;
-
-  let bubbleContent;
-  if (isSticker) {
-    const sticker = STICKERS.find(s => s.id === m.sticker);
-    bubbleContent = sticker ? `<div style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;">${sticker.svg}</div>` : '[sticker]';
-  } else {
-    bubbleContent = escapeHtml(m.text);
-  }
-
-  let senderHtml = '';
-  if (chatMode === 'global' && !isSystem) {
-    const senderLabel = m.cls === 'mine' || m.cls === 'global mine' ? 'You' : m.from;
-    senderHtml = `<div class="msg-sender">${escapeHtml(senderLabel)}</div>`;
-  }
-
-  msg.innerHTML = `
-    ${senderHtml}
-    <div class="msg-bubble">${bubbleContent}</div>
-    <div class="msg-meta">${ts}Z · ${m.cls === 'mine' ? 'encrypted out' : m.cls === 'theirs' ? 'encrypted in' : m.cls === 'global' ? 'global in' : m.cls === 'global mine' ? 'global out' : 'system'}</div>
-  `;
-
-  container.appendChild(msg);
-  container.scrollTop = container.scrollHeight;
-}
-
+// ── Message Store & Rendering ──
 function addMessage(mode, cls, text, opts = {}) {
-  // Handle global sticker text format
   if (mode === 'global' && text && text.startsWith('__STICKER__:')) {
     opts.sticker = text.replace('__STICKER__:', '');
     text = '';
   }
-  const m = { mode, cls, text, ts: timestamp(), ...opts };
+  const id = opts.id || generateId();
+  const m = { id, mode, cls, text, ts: timestamp(), reactions: [], ...opts };
   messages.push(m);
+  messageMap.set(id, m);
 
   if (mode === chatMode) {
     el('chatEmpty').classList.add('hidden');
     appendMessageToDOM(m);
   } else {
-    // Increment unread
     if (mode === 'peer') {
       unreadPeer++;
       const badge = el('peerBadge');
@@ -272,6 +253,128 @@ function addMessage(mode, cls, text, opts = {}) {
       badge.style.display = 'inline-block';
     }
   }
+}
+
+function renderMessages() {
+  activePlayers.forEach(p => { try { p.audio.pause(); } catch {} });
+  activePlayers.clear();
+  const container = el('messages');
+  container.innerHTML = '';
+  const filtered = messages.filter(m => m.mode === chatMode);
+  if (filtered.length === 0) { updateEmptyState(); return; }
+  el('chatEmpty').classList.add('hidden');
+  filtered.forEach(m => appendMessageToDOM(m));
+  container.scrollTop = container.scrollHeight;
+}
+
+function appendMessageToDOM(m) {
+  const container = el('messages');
+  const msg = document.createElement('div');
+  msg.className = `msg ${m.cls}`;
+  msg.dataset.id = m.id;
+
+  const isSystem = m.cls === 'system';
+  const isSticker = !!m.sticker;
+  const isImage = !!m.imageUrl;
+  const isVoice = !!m.voiceUrl;
+
+  let bubbleContent = '';
+  if (isSticker) {
+    const sticker = STICKERS.find(s => s.id === m.sticker);
+    bubbleContent = sticker ? `<div class="msg-sticker">${sticker.svg}</div>` : '[sticker]';
+  } else if (isImage) {
+    bubbleContent = `<img class="msg-image" src="${m.imageUrl}" alt="${escapeHtml(m.name || 'image')}" loading="lazy">`;
+  } else if (isVoice) {
+    bubbleContent = `
+      <div class="msg-voice">
+        <button class="voice-play" data-url="${m.voiceUrl}" data-dur="${m.duration || 0}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </button>
+        <div class="voice-track"><div class="voice-progress"></div></div>
+        <span class="voice-time">${formatTime(m.duration || 0)}</span>
+      </div>
+    `;
+  } else {
+    bubbleContent = escapeHtml(m.text);
+  }
+
+  let senderHtml = '';
+  if (chatMode === 'global' && !isSystem) {
+    const senderLabel = (m.cls === 'mine' || m.cls === 'global mine') ? 'You' : m.from;
+    senderHtml = `<div class="msg-sender">${escapeHtml(senderLabel)}</div>`;
+  }
+
+  msg.innerHTML = `
+    ${senderHtml}
+    <div class="msg-bubble">${bubbleContent}</div>
+    <div class="msg-meta">${m.ts}Z · ${getMetaLabel(m)}</div>
+  `;
+
+  if (m.reactions && m.reactions.length > 0) {
+    const bar = document.createElement('div');
+    bar.className = 'msg-reaction-bar';
+    bar.innerHTML = m.reactions.map(r => `<span class="reaction-chip">${r}</span>`).join('');
+    msg.appendChild(bar);
+  }
+
+  if (!isSystem && chatMode === 'peer') {
+    const trigger = document.createElement('button');
+    trigger.className = 'msg-reaction-trigger';
+    trigger.innerHTML = '+';
+    trigger.title = 'Add reaction';
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showInlineReactions(msg, m.id);
+    });
+    msg.appendChild(trigger);
+  }
+
+  if (isImage) {
+    const img = msg.querySelector('.msg-image');
+    img.addEventListener('click', () => window.open(m.imageUrl, '_blank'));
+  }
+
+  if (isVoice) {
+    const playBtn = msg.querySelector('.voice-play');
+    const bar = msg.querySelector('.voice-progress');
+    const timeEl = msg.querySelector('.voice-time');
+    playBtn.addEventListener('click', () => toggleVoice(m.voiceUrl, playBtn, bar, timeEl));
+  }
+
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
+}
+
+function updateMessageReactions(m) {
+  const msgEl = document.querySelector(`.msg[data-id="${m.id}"]`);
+  if (!msgEl) return;
+  let bar = msgEl.querySelector('.msg-reaction-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'msg-reaction-bar';
+    msgEl.appendChild(bar);
+  }
+  if (!m.reactions || m.reactions.length === 0) {
+    bar.remove();
+    return;
+  }
+  bar.innerHTML = m.reactions.map(r => `<span class="reaction-chip">${r}</span>`).join('');
+}
+
+function showInlineReactions(msgEl, msgId) {
+  const existing = msgEl.querySelector('.inline-reactions');
+  if (existing) { existing.remove(); return; }
+  const row = document.createElement('div');
+  row.className = 'inline-reactions';
+  row.innerHTML = REACTION_EMOJIS.map(e => `<span class="inline-emoji" data-emoji="${e}">${e}</span>`).join('');
+  row.querySelectorAll('.inline-emoji').forEach(span => {
+    span.addEventListener('click', () => {
+      sendReaction(msgId, span.dataset.emoji);
+      row.remove();
+    });
+  });
+  msgEl.appendChild(row);
+  setTimeout(() => { if (row.parentNode) row.remove(); }, 5000);
 }
 
 function updateEmptyState() {
@@ -292,29 +395,16 @@ function updateEmptyState() {
   }
 }
 
-// ── Transcript Rendering (legacy compat) ──
-function timestamp() {
-  const d = new Date();
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-
 function appendLine(cls, text) {
   addMessage('peer', cls, text);
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 // ── Typing Indicator ──
+let typingHideTimeout = null;
+
 function showTyping(from) {
   const indicator = el('typingIndicator');
-  const text = el('typingText');
-  text.textContent = `${from} is typing`;
+  el('typingText').textContent = `${from} is typing`;
   indicator.classList.add('visible');
 }
 
@@ -322,18 +412,55 @@ function hideTyping() {
   el('typingIndicator').classList.remove('visible');
 }
 
-let typingHideTimeout = null;
-
 function handleTyping(from) {
   showTyping(from);
   if (typingHideTimeout) clearTimeout(typingHideTimeout);
   typingHideTimeout = setTimeout(hideTyping, 3000);
 }
 
+// ── Voice Player ──
+function toggleVoice(url, btn, bar, timeEl) {
+  if (activePlayers.has(url)) {
+    const player = activePlayers.get(url);
+    if (player.audio.paused) {
+      player.audio.play();
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+    } else {
+      player.audio.pause();
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    }
+  } else {
+    const audio = new Audio(url);
+    const player = { audio, btn, bar, timeEl };
+    activePlayers.set(url, player);
+
+    audio.addEventListener('timeupdate', () => {
+      if (!isNaN(audio.duration)) {
+        const pct = (audio.currentTime / audio.duration) * 100;
+        bar.style.width = pct + '%';
+        timeEl.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+      }
+    });
+    audio.addEventListener('ended', () => {
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+      bar.style.width = '0%';
+      if (!isNaN(audio.duration)) timeEl.textContent = formatTime(audio.duration);
+      activePlayers.delete(url);
+    });
+    audio.addEventListener('error', () => {
+      timeEl.textContent = 'Error';
+      activePlayers.delete(url);
+    });
+    audio.play().catch(() => {
+      timeEl.textContent = 'Error';
+      activePlayers.delete(url);
+    });
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+  }
+}
+
 // ── WebSocket ──
-ws.addEventListener('open', () => {
-  setStatus('live');
-});
+ws.addEventListener('open', () => setStatus('live'));
 
 ws.addEventListener('close', () => {
   setStatus('down');
@@ -350,10 +477,7 @@ ws.addEventListener('message', async (ev) => {
     myCode = msg.code;
     setStatus('live');
     el('myIdBadge').textContent = `channel ${myCode}`;
-    const display = el('myIdBox');
-    display.querySelectorAll('.code-cell').forEach((c, i) => {
-      c.textContent = myCode[i] || '-';
-    });
+    el('myIdBox').querySelectorAll('.code-cell').forEach((c, i) => { c.textContent = myCode[i] || '-'; });
     setShield('idle', 'READY');
     setCryptoProgress(15);
     initStickerPicker();
@@ -373,9 +497,7 @@ ws.addEventListener('message', async (ev) => {
   }
 
   if (msg.type === 'typing') {
-    if (chatMode === 'peer') {
-      handleTyping(msg.from);
-    }
+    if (chatMode === 'peer') handleTyping(msg.from);
   }
 
   if (msg.type === 'global_chat') {
@@ -383,13 +505,11 @@ ws.addEventListener('message', async (ev) => {
   }
 
   if (msg.type === 'global_typing') {
-    if (chatMode === 'global' && msg.from !== myCode) {
-      handleTyping(msg.from);
-    }
+    if (chatMode === 'global' && msg.from !== myCode) handleTyping(msg.from);
   }
 });
 
-// ── Key Exchange + E2E Chat ──
+// ── Key Exchange ──
 async function ensureKeyPair() {
   return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
 }
@@ -400,7 +520,6 @@ el('connectBtn').addEventListener('click', async () => {
     appendLine('system', 'Enter a valid 6-character peer code');
     return;
   }
-
   peerCode = targetCode;
   const btn = el('connectBtn');
   btn.disabled = true;
@@ -413,13 +532,11 @@ el('connectBtn').addEventListener('click', async () => {
     const keyPair = await ensureKeyPair();
     const rawPub = await crypto.subtle.exportKey('raw', keyPair.publicKey);
     peers[peerCode] = { keyPair, sharedKey: null };
-
     ws.send(JSON.stringify({
       type: 'send_chat',
       to: peerCode,
       ciphertext: JSON.stringify({ kind: 'handshake', pub: Array.from(new Uint8Array(rawPub)) })
     }));
-
     appendLine('system', `Opening secure channel with ${peerCode}…`);
   } catch (e) {
     appendLine('system', 'Key generation failed');
@@ -463,7 +580,6 @@ async function handleIncomingChat(from, ciphertextRaw) {
       syncCells('peerIdField');
     }
     peerCode = from;
-
     setCryptoProgress(100);
     setShield('secure', 'E2E SECURE');
     appendLine('system', `Secure channel established with ${from}`);
@@ -471,39 +587,55 @@ async function handleIncomingChat(from, ciphertextRaw) {
     const btn = el('connectBtn');
     btn.disabled = false;
     btn.textContent = 'HANDSHAKE COMPLETE';
-    setTimeout(() => {
-      btn.textContent = 'INITIATE HANDSHAKE';
-      btn.classList.remove('connecting');
-    }, 2000);
+    setTimeout(() => { btn.textContent = 'INITIATE HANDSHAKE'; btn.classList.remove('connecting'); }, 2000);
+    return;
+  }
+
+  const peer = peers[from];
+  if (!peer || !peer.sharedKey) return;
+
+  const iv = new Uint8Array(payload.iv);
+  const data = new Uint8Array(payload.data);
+  let plainBuf;
+  try {
+    plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, peer.sharedKey, data);
+  } catch {
+    appendLine('system', 'Failed to decrypt message — possible tampering');
+    return;
+  }
+
+  const plainText = new TextDecoder().decode(plainBuf);
+  let inner;
+  try { inner = JSON.parse(plainText); } catch {
+    // Fallback for legacy raw text messages
+    if (payload.kind === 'msg') {
+      addMessage('peer', 'theirs', plainText, { id: generateId() });
+    }
     return;
   }
 
   if (payload.kind === 'msg') {
-    const peer = peers[from];
-    if (!peer || !peer.sharedKey) return;
-
-    const iv = new Uint8Array(payload.iv);
-    const data = new Uint8Array(payload.data);
-    try {
-      const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, peer.sharedKey, data);
-      appendLine('theirs', new TextDecoder().decode(plainBuf));
-    } catch {
-      appendLine('system', 'Failed to decrypt message — possible tampering');
-    }
-  }
-
-  if (payload.kind === 'sticker') {
-    const peer = peers[from];
-    if (!peer || !peer.sharedKey) return;
-
-    const iv = new Uint8Array(payload.iv);
-    const data = new Uint8Array(payload.data);
-    try {
-      const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, peer.sharedKey, data);
-      const stickerId = new TextDecoder().decode(plainBuf);
-      addMessage('peer', 'theirs', '', { sticker: stickerId });
-    } catch {
-      appendLine('system', 'Failed to decrypt sticker — possible tampering');
+    addMessage('peer', 'theirs', inner.text, { id: inner.id });
+  } else if (payload.kind === 'sticker') {
+    addMessage('peer', 'theirs', '', { sticker: inner.stickerId, id: inner.id });
+  } else if (payload.kind === 'image') {
+    const bytes = new Uint8Array(inner.data);
+    const blob = new Blob([bytes], { type: inner.type });
+    const url = URL.createObjectURL(blob);
+    addMessage('peer', 'theirs', '', { imageUrl: url, name: inner.name, id: inner.id });
+  } else if (payload.kind === 'voice') {
+    const bytes = new Uint8Array(inner.data);
+    const blob = new Blob([bytes], { type: 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    addMessage('peer', 'theirs', '', { voiceUrl: url, duration: inner.duration, id: inner.id });
+  } else if (payload.kind === 'reaction') {
+    const targetMsg = messageMap.get(inner.targetId);
+    if (targetMsg) {
+      if (!targetMsg.reactions) targetMsg.reactions = [];
+      if (!targetMsg.reactions.includes(inner.emoji)) {
+        targetMsg.reactions.push(inner.emoji);
+        if (targetMsg.mode === chatMode) updateMessageReactions(targetMsg);
+      }
     }
   }
 }
@@ -514,7 +646,6 @@ el('msgInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) sendMessage();
 });
 
-// Typing detection
 el('msgInput').addEventListener('input', () => {
   if (chatMode === 'peer' && peerCode) {
     ws.send(JSON.stringify({ type: 'typing', to: peerCode }));
@@ -530,18 +661,19 @@ async function sendMessage() {
   if (chatMode === 'peer') {
     const targetCode = el('peerIdField').value.trim().toUpperCase();
     if (!targetCode) return;
-
     const peer = peers[targetCode];
     if (!peer || !peer.sharedKey) {
       appendLine('system', 'No secure channel — initiate handshake first');
       return;
     }
 
+    const id = generateId();
+    const inner = JSON.stringify({ kind: 'msg', id, text });
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const data = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv },
       peer.sharedKey,
-      new TextEncoder().encode(text)
+      new TextEncoder().encode(inner)
     );
 
     ws.send(JSON.stringify({
@@ -550,9 +682,8 @@ async function sendMessage() {
       ciphertext: JSON.stringify({ kind: 'msg', iv: Array.from(iv), data: Array.from(new Uint8Array(data)) })
     }));
 
-    addMessage('peer', 'mine', text);
+    addMessage('peer', 'mine', text, { id });
   } else {
-    // Global chat (plaintext)
     ws.send(JSON.stringify({ type: 'global_chat', text }));
     addMessage('global', 'global mine', text, { from: myCode });
   }
@@ -564,21 +695,17 @@ async function sendMessage() {
 async function sendSticker(stickerId) {
   if (chatMode === 'peer') {
     const targetCode = el('peerIdField').value.trim().toUpperCase();
-    if (!targetCode) {
-      appendLine('system', 'Enter a peer code first');
-      return;
-    }
+    if (!targetCode) { appendLine('system', 'Enter a peer code first'); return; }
     const peer = peers[targetCode];
-    if (!peer || !peer.sharedKey) {
-      appendLine('system', 'No secure channel — initiate handshake first');
-      return;
-    }
+    if (!peer || !peer.sharedKey) { appendLine('system', 'No secure channel'); return; }
 
+    const id = generateId();
+    const inner = JSON.stringify({ kind: 'sticker', id, stickerId });
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const data = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv },
       peer.sharedKey,
-      new TextEncoder().encode(stickerId)
+      new TextEncoder().encode(inner)
     );
 
     ws.send(JSON.stringify({
@@ -587,11 +714,247 @@ async function sendSticker(stickerId) {
       ciphertext: JSON.stringify({ kind: 'sticker', iv: Array.from(iv), data: Array.from(new Uint8Array(data)) })
     }));
 
-    addMessage('peer', 'mine', '', { sticker: stickerId });
+    addMessage('peer', 'mine', '', { sticker: stickerId, id });
   } else {
-    // Global sticker
     ws.send(JSON.stringify({ type: 'global_chat', text: `__STICKER__:${stickerId}` }));
     addMessage('global', 'global mine', `__STICKER__:${stickerId}`, { from: myCode });
+  }
+}
+
+// ── Image Sharing ──
+el('imageBtn').addEventListener('click', () => {
+  if (chatMode !== 'peer') {
+    appendLine('system', 'Images can only be sent in peer mode (E2E encrypted)');
+    return;
+  }
+  el('imageInput').click();
+});
+
+el('imageInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  await sendImage(file);
+  e.target.value = '';
+});
+
+async function sendImage(file) {
+  const targetCode = el('peerIdField').value.trim().toUpperCase();
+  if (!targetCode) { appendLine('system', 'Enter a peer code first'); return; }
+  const peer = peers[targetCode];
+  if (!peer || !peer.sharedKey) { appendLine('system', 'No secure channel'); return; }
+  if (file.size > 2 * 1024 * 1024) { appendLine('system', 'Image too large (max 2MB)'); return; }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const id = generateId();
+  const inner = JSON.stringify({
+    kind: 'image', id, name: file.name, type: file.type,
+    data: Array.from(bytes)
+  });
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    peer.sharedKey,
+    new TextEncoder().encode(inner)
+  );
+
+  ws.send(JSON.stringify({
+    type: 'send_chat',
+    to: targetCode,
+    ciphertext: JSON.stringify({
+      kind: 'image',
+      iv: Array.from(iv),
+      data: Array.from(new Uint8Array(encrypted))
+    })
+  }));
+
+  const blob = new Blob([bytes], { type: file.type });
+  const url = URL.createObjectURL(blob);
+  addMessage('peer', 'mine', '', { imageUrl: url, name: file.name, id });
+}
+
+// ── Voice Notes ──
+el('voiceBtn').addEventListener('click', () => {
+  if (chatMode !== 'peer') {
+    appendLine('system', 'Voice notes can only be sent in peer mode (E2E encrypted)');
+    return;
+  }
+  if (isRecording) { stopRecording(); }
+  else { startRecording(); }
+});
+
+el('recCancel').addEventListener('click', cancelRecording);
+el('recStop').addEventListener('click', stopRecording);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && isRecording) cancelRecording();
+});
+
+async function startRecording() {
+  const targetCode = el('peerIdField').value.trim().toUpperCase();
+  if (!targetCode) { appendLine('system', 'Enter a peer code first'); return; }
+  const peer = peers[targetCode];
+  if (!peer || !peer.sharedKey) { appendLine('system', 'No secure channel'); return; }
+
+  try {
+    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    appendLine('system', 'Microphone access denied');
+    return;
+  }
+
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(microphoneStream);
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 64;
+  source.connect(analyser);
+
+  mediaRecorder = new MediaRecorder(microphoneStream, { mimeType: 'audio/webm;codecs=opus' });
+  audioChunks = [];
+  recordingSeconds = 0;
+  isRecording = true;
+
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    await sendVoiceNote(blob, recordingSeconds);
+    cleanupRecording();
+  };
+
+  mediaRecorder.start(100);
+  el('recordingOverlay').classList.add('visible');
+  el('voiceBtn').classList.add('recording');
+  recordingTimer = setInterval(() => {
+    recordingSeconds++;
+    el('recTimer').textContent = formatTime(recordingSeconds);
+  }, 1000);
+  startVisualizer();
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  isRecording = false;
+  clearInterval(recordingTimer);
+  stopVisualizer();
+  el('recordingOverlay').classList.remove('visible');
+  el('voiceBtn').classList.remove('recording');
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (microphoneStream) microphoneStream.getTracks().forEach(t => t.stop());
+  if (audioContext) audioContext.close();
+}
+
+function cancelRecording() {
+  if (!isRecording) return;
+  isRecording = false;
+  clearInterval(recordingTimer);
+  stopVisualizer();
+  el('recordingOverlay').classList.remove('visible');
+  el('voiceBtn').classList.remove('recording');
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.onstop = () => cleanupRecording();
+    mediaRecorder.stop();
+  }
+  if (microphoneStream) microphoneStream.getTracks().forEach(t => t.stop());
+  if (audioContext) audioContext.close();
+  audioChunks = [];
+}
+
+function cleanupRecording() {
+  mediaRecorder = null;
+  microphoneStream = null;
+  audioContext = null;
+  analyser = null;
+  audioChunks = [];
+  isRecording = false;
+}
+
+async function sendVoiceNote(blob, duration) {
+  const targetCode = el('peerIdField').value.trim().toUpperCase();
+  const peer = peers[targetCode];
+  if (!peer || !peer.sharedKey) return;
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const id = generateId();
+  const inner = JSON.stringify({ kind: 'voice', id, duration, data: Array.from(bytes) });
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    peer.sharedKey,
+    new TextEncoder().encode(inner)
+  );
+
+  ws.send(JSON.stringify({
+    type: 'send_chat',
+    to: targetCode,
+    ciphertext: JSON.stringify({
+      kind: 'voice',
+      iv: Array.from(iv),
+      data: Array.from(new Uint8Array(encrypted))
+    })
+  }));
+
+  const url = URL.createObjectURL(blob);
+  addMessage('peer', 'mine', '', { voiceUrl: url, duration, id });
+}
+
+// ── Visualizer ──
+function startVisualizer() {
+  const bars = document.querySelectorAll('.rec-bar');
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+
+  function draw() {
+    animationId = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(dataArray);
+    bars.forEach((bar, i) => {
+      const idx = Math.floor(i * (bufferLength / bars.length));
+      const value = dataArray[idx] || 0;
+      const height = Math.max(4, (value / 255) * 32);
+      bar.style.height = height + 'px';
+    });
+  }
+  draw();
+}
+
+function stopVisualizer() {
+  if (animationId) cancelAnimationFrame(animationId);
+  animationId = null;
+  document.querySelectorAll('.rec-bar').forEach(bar => { bar.style.height = '4px'; });
+}
+
+// ── Reactions ──
+async function sendReaction(targetId, emoji) {
+  const targetCode = el('peerIdField').value.trim().toUpperCase();
+  if (!targetCode) return;
+  const peer = peers[targetCode];
+  if (!peer || !peer.sharedKey) return;
+
+  const inner = JSON.stringify({ kind: 'reaction', targetId, emoji });
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    peer.sharedKey,
+    new TextEncoder().encode(inner)
+  );
+
+  ws.send(JSON.stringify({
+    type: 'send_chat',
+    to: targetCode,
+    ciphertext: JSON.stringify({
+      kind: 'reaction',
+      iv: Array.from(iv),
+      data: Array.from(new Uint8Array(encrypted))
+    })
+  }));
+
+  const myMsg = messageMap.get(targetId);
+  if (myMsg) {
+    if (!myMsg.reactions) myMsg.reactions = [];
+    if (!myMsg.reactions.includes(emoji)) {
+      myMsg.reactions.push(emoji);
+      updateMessageReactions(myMsg);
+    }
   }
 }
 

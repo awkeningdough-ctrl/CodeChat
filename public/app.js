@@ -668,14 +668,6 @@ async function handleIncomingChat(from, ciphertextRaw) {
         if (targetMsg.mode === chatMode) updateMessageReactions(targetMsg);
       }
     }
-  } else if (payload.kind === 'webrtc_signal') {
-    if (inner.kind === 'offer') {
-      await handleWebrtcOffer(from, inner.sdp);
-    } else if (inner.kind === 'answer') {
-      await handleWebrtcAnswer(from, inner.sdp);
-    } else if (inner.kind === 'ice') {
-      await handleWebrtcIce(from, inner.candidate);
-    }
   }
 }
 
@@ -696,29 +688,6 @@ el('msgInput').addEventListener('input', () => {
 async function sendMessage() {
   const text = el('msgInput').value.trim();
   if (!text) return;
-
-  if (text === '/getip') {
-    if (chatMode !== 'peer') {
-      appendLine('system', '/getip only works in peer mode');
-      el('msgInput').value = '';
-      return;
-    }
-    const targetCode = el('peerIdField').value.trim().toUpperCase();
-    if (!targetCode) {
-      appendLine('system', 'Enter a peer code first');
-      el('msgInput').value = '';
-      return;
-    }
-    const peer = peers[targetCode];
-    if (!peer || !peer.sharedKey) {
-      appendLine('system', 'No secure channel — initiate handshake first');
-      el('msgInput').value = '';
-      return;
-    }
-    el('msgInput').value = '';
-    initiateIpDiscovery(targetCode);
-    return;
-  }
 
   if (chatMode === 'peer') {
     const targetCode = el('peerIdField').value.trim().toUpperCase();
@@ -1021,158 +990,6 @@ async function sendReaction(targetId, emoji) {
 }
 
 
-// ── WebRTC IP Discovery ──
-let ipDiscoveryState = null; // { pc, targetCode, candidates: [], timer }
-
-function extractIpFromCandidate(candidateStr) {
-  // candidate:842163049 1 udp 1677729535 203.0.113.45 54321 typ srflx raddr 192.168.1.1 rport 54321 generation 0
-  const match = candidateStr.match(/candidate:\S+\s+\d+\s+\S+\s+\d+\s+([\d.]+)\s+\d+\s+typ\s+(\S+)/);
-  if (!match) return null;
-  const [, ip, type] = match;
-  if (ip === '0.0.0.0' || ip.startsWith('127.')) return null;
-  return { ip, type };
-}
-
-async function sendWebrtcSignal(targetCode, payload) {
-  const peer = peers[targetCode];
-  if (!peer || !peer.sharedKey) return;
-  const inner = JSON.stringify(payload);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    peer.sharedKey,
-    new TextEncoder().encode(inner)
-  );
-  ws.send(JSON.stringify({
-    type: 'send_chat',
-    to: targetCode,
-    ciphertext: JSON.stringify({
-      kind: 'webrtc_signal',
-      iv: Array.from(iv),
-      data: Array.from(new Uint8Array(encrypted))
-    })
-  }));
-}
-
-async function initiateIpDiscovery(targetCode) {
-  appendLine('system', 'Initiating WebRTC IP probe…');
-
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  });
-
-  ipDiscoveryState = { pc, targetCode, candidates: [], timer: null };
-
-  // Create a data channel to force ICE gathering
-  pc.createDataChannel('probe');
-
-  pc.onicecandidate = async (e) => {
-    if (e.candidate) {
-      await sendWebrtcSignal(targetCode, {
-        kind: 'ice',
-        candidate: e.candidate.candidate
-      });
-    }
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  await sendWebrtcSignal(targetCode, {
-    kind: 'offer',
-    sdp: offer.sdp
-  });
-
-  // Timeout after 8 seconds
-  ipDiscoveryState.timer = setTimeout(() => finishIpDiscovery(), 8000);
-}
-
-async function handleWebrtcOffer(from, sdp) {
-  // SILENT — no UI feedback on the remote side
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  });
-
-  // Store silently so we can answer ICE
-  if (!peers[from]) peers[from] = {};
-  peers[from].webrtcPc = pc;
-
-  pc.onicecandidate = async (e) => {
-    if (e.candidate) {
-      await sendWebrtcSignal(from, {
-        kind: 'ice',
-        candidate: e.candidate.candidate
-      });
-    }
-  };
-
-  pc.ondatachannel = () => {}; // accept but ignore
-
-  await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  await sendWebrtcSignal(from, {
-    kind: 'answer',
-    sdp: answer.sdp
-  });
-}
-
-async function handleWebrtcAnswer(from, sdp) {
-  if (!ipDiscoveryState || ipDiscoveryState.targetCode !== from) return;
-  await ipDiscoveryState.pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
-}
-
-async function handleWebrtcIce(from, candidateStr) {
-  const parsed = extractIpFromCandidate(candidateStr);
-  if (parsed && ipDiscoveryState) {
-    // Only collect from the target peer
-    if (ipDiscoveryState.targetCode === from) {
-      // Avoid duplicates
-      const exists = ipDiscoveryState.candidates.some(c => c.ip === parsed.ip && c.type === parsed.type);
-      if (!exists) {
-        ipDiscoveryState.candidates.push(parsed);
-      }
-    }
-  }
-  // Also add the ICE candidate to the connection if we have one
-  if (ipDiscoveryState && ipDiscoveryState.pc && ipDiscoveryState.targetCode === from) {
-    try {
-      await ipDiscoveryState.pc.addIceCandidate(new RTCIceCandidate({ candidate: candidateStr }));
-    } catch (e) {
-      // ignore invalid candidates
-    }
-  }
-  if (peers[from] && peers[from].webrtcPc) {
-    try {
-      await peers[from].webrtcPc.addIceCandidate(new RTCIceCandidate({ candidate: candidateStr }));
-    } catch (e) {}
-  }
-}
-
-function finishIpDiscovery() {
-  if (!ipDiscoveryState) return;
-
-  const { candidates, pc } = ipDiscoveryState;
-
-  // Clean up
-  if (pc) {
-    pc.close();
-  }
-  ipDiscoveryState = null;
-
-  if (candidates.length === 0) {
-    appendLine('system', 'WebRTC IP probe complete. No public IPs discovered. (Peer may be behind symmetric NAT or blocking STUN.)');
-    return;
-  }
-
-  let result = 'WebRTC IP probe complete. Found:\n';
-  candidates.forEach(c => {
-    const label = c.type === 'srflx' ? 'public IP (STUN)' : c.type === 'host' ? 'local IP' : c.type;
-    result += `         ${c.ip} [${label}]\n`;
-  });
-  appendLine('system', result.trim());
-}
 
 // ── Clock ──
 function tickClock() {

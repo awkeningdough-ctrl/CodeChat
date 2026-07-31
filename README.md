@@ -46,3 +46,8 @@ Notes on the free tier:
   Discord, whatever). Person B pastes it into "Peer code to chat with"
   and clicks Connect. This triggers a key exchange; once it says "secure
   channel established," messages are end-to-end encrypted.
+
+
+
+
+my url is codechat-bmr9.onrender.com - this is my official chatting url.

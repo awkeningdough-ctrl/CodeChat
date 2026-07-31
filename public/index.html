@@ -2,176 +2,721 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeChat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeChat — Secure Channel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #0f1216;
-    --panel: #171b21;
-    --paper: #ece6d6;
-    --paper-dim: #8a8577;
-    --amber: #e8a33d;
-    --amber-dim: #7a5a26;
-    --alert: #c1443c;
-    --line: #2a3038;
+    --void: #03040a;
+    --void-light: #0a0b14;
+    --panel: rgba(12, 14, 24, 0.65);
+    --panel-border: rgba(255, 255, 255, 0.06);
+    --text: #e8eaf0;
+    --text-dim: #6b7080;
+    --text-muted: #3d4250;
+    --cyan: #00f0ff;
+    --cyan-dim: rgba(0, 240, 255, 0.12);
+    --cyan-glow: rgba(0, 240, 255, 0.35);
+    --amber: #ffb800;
+    --amber-dim: rgba(255, 184, 0, 0.12);
+    --amber-glow: rgba(255, 184, 0, 0.35);
+    --danger: #ff4d4d;
+    --line: rgba(255, 255, 255, 0.08);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
   }
-  * { box-sizing: border-box; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
   html, body {
-    margin: 0; height: 100%; background: var(--ink); color: var(--paper);
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    height: 100%;
+    background: var(--void);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow: hidden;
   }
-  body { display: flex; flex-direction: column; overflow: hidden; }
 
-  /* faint scanline sweep -- one deliberate motion moment, disabled under reduced-motion */
-  body::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50;
-    background: linear-gradient(180deg, transparent 0%, rgba(232,163,61,0.035) 50%, transparent 100%);
-    background-size: 100% 240px;
-    animation: sweep 9s linear infinite;
+  /* ── Ambient Background ── */
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(0, 240, 255, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(255, 184, 0, 0.06), transparent);
+    animation: ambientShift 20s ease-in-out infinite alternate;
   }
-  @keyframes sweep { 0% { background-position: 0 -240px; } 100% { background-position: 0 100vh; } }
-  @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+  @keyframes ambientShift {
+    0% { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ambient { animation: none; opacity: 0.4; }
+  }
 
-  .bar {
-    display: flex; align-items: baseline; justify-content: space-between;
-    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  /* Scanline texture */
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 4px
+    );
+    opacity: 0.3;
+  }
+
+  /* ── Layout ── */
+  .app {
+    position: relative;
+    z-index: 2;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(3, 4, 10, 0.8);
+    backdrop-filter: blur(12px);
     flex-shrink: 0;
   }
   .brand {
-    font-weight: 700; letter-spacing: 3px; font-size: 14px; color: var(--paper);
-    display: flex; align-items: center; gap: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
-  .dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--paper-dim);
-    box-shadow: none; transition: background .3s, box-shadow .3s;
+  .brand-orb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    box-shadow: 0 0 0 0 transparent;
+    transition: all 0.4s ease;
+    position: relative;
   }
-  .dot.live { background: var(--amber); box-shadow: 0 0 6px 1px var(--amber); animation: pulse 2s infinite; }
-  .dot.down { background: var(--alert); box-shadow: 0 0 6px 1px var(--alert); }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
-  .status-text { font-size: 11px; color: var(--paper-dim); letter-spacing: 1px; margin-left: 2px; }
-  .clock { font-size: 12px; color: var(--paper-dim); letter-spacing: 1px; }
+  .brand-orb.live {
+    background: var(--cyan);
+    box-shadow: 0 0 12px 2px var(--cyan-glow);
+    animation: orbPulse 3s ease-in-out infinite;
+  }
+  .brand-orb.down {
+    background: var(--danger);
+    box-shadow: 0 0 12px 2px rgba(255, 77, 77, 0.4);
+  }
+  @keyframes orbPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .brand-title {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--text);
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    margin-left: 4px;
+  }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .shield-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    transition: all 0.3s ease;
+  }
+  .shield-badge.secure {
+    color: var(--cyan);
+    border-color: var(--cyan-dim);
+    background: var(--cyan-dim);
+  }
+  .clock {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    min-width: 70px;
+    text-align: right;
+  }
 
-  .console {
-    display: flex; gap: 1px; background: var(--line); flex-shrink: 0;
+  /* ── Main Workspace ── */
+  .workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
   }
-  .channel-block {
-    flex: 1; background: var(--panel); padding: 14px 20px;
+
+  /* ── Sidebar (Connection Panel) ── */
+  .sidebar {
+    width: 380px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--panel-border);
+    background: rgba(10, 11, 20, 0.6);
+    backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
+    padding: 28px;
+    gap: 32px;
+    overflow-y: auto;
   }
-  .channel-block label {
-    display: block; font-size: 10px; letter-spacing: 2px; color: var(--paper-dim);
-    margin-bottom: 8px; font-weight: 600;
+  .panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    font-weight: 600;
   }
-  .code-box { position: relative; }
-  .cells { display: flex; gap: 6px; }
-  .cell {
-    flex: 1; height: 42px; display: flex; align-items: center; justify-content: center;
-    background: var(--ink); border: 1px solid var(--line); border-radius: 3px;
-    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 19px; color: var(--amber);
+
+  /* Your Channel */
+  .channel-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
   }
-  .code-entry .cell { color: var(--paper); }
-  .code-box.focused .cell { border-color: var(--amber); }
-  /* the real input sits invisibly on top so typing/selection/readonly all work normally;
-     only its caret is visible, the character glyphs render in the cells above instead */
+  .channel-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    opacity: 0.6;
+  }
+  .code-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .code-cell {
+    flex: 1;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--void);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--amber);
+    text-shadow: 0 0 20px var(--amber-glow);
+    transition: all 0.2s ease;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .copy-btn:hover {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: var(--amber-dim);
+  }
+  .copy-btn.copied {
+    color: var(--cyan);
+    border-color: var(--cyan);
+  }
+
+  /* Peer Entry */
+  .peer-entry {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    position: relative;
+  }
+  .peer-entry::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .peer-entry.active::before { opacity: 0.6; }
+
+  .input-cells {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0 16px;
+    position: relative;
+  }
+  .input-cells .cell {
+    flex: 1;
+    height: 56px;
+    background: var(--void);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  .input-cells.focused .cell {
+    border-color: var(--cyan-dim);
+  }
+  .input-cells .cell.filled {
+    color: var(--cyan);
+    border-color: var(--cyan-dim);
+    box-shadow: inset 0 0 12px var(--cyan-dim);
+  }
+  .input-cells .cell.cursor::after {
+    content: '';
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 2px;
+    background: var(--cyan);
+    animation: cursorBlink 1s step-end infinite;
+  }
+  @keyframes cursorBlink { 50% { opacity: 0; } }
+
+  .code-box {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: text;
+  }
   .code-box input {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    background: transparent; border: none; color: transparent; caret-color: var(--amber);
-    font-family: 'IBM Plex Mono', monospace; font-size: 19px; letter-spacing: 6px;
-    padding: 0 4px; text-transform: uppercase;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border: none;
+    color: transparent;
+    caret-color: transparent;
+    font-size: 24px;
+    letter-spacing: 18px;
+    padding: 0 14px;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
   }
-  .code-box input::placeholder { color: transparent; }
   .code-box input:focus { outline: none; }
-  .code-entry { display: flex; gap: 8px; align-items: stretch; }
-  .code-entry .code-box { flex: 1; }
-  .channel-block button {
-    background: transparent; border: 1px solid var(--amber-dim); color: var(--amber);
-    font-family: inherit; font-weight: 600; letter-spacing: 2px; font-size: 11px;
-    padding: 0 16px; border-radius: 3px; cursor: pointer; white-space: nowrap;
-    transition: background .15s, border-color .15s;
-  }
-  .channel-block button:hover { background: rgba(232,163,61,0.1); border-color: var(--amber); }
-  .channel-block button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
-  .log {
-    flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 3px;
-    font-size: 13px; line-height: 1.6;
+  .connect-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--cyan-dim), rgba(0,240,255,0.05));
+    border: 1px solid var(--cyan-dim);
+    color: var(--cyan);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 2px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
   }
-  .log::-webkit-scrollbar { width: 8px; }
-  .log::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
-  .line { display: flex; gap: 10px; }
-  .line .ts { color: var(--paper-dim); flex-shrink: 0; }
-  .line .marker { flex-shrink: 0; width: 16px; }
-  .line.mine .marker, .line.mine .body { color: var(--amber); }
-  .line.theirs .marker, .line.theirs .body { color: var(--paper); }
-  .line.system { color: var(--paper-dim); font-style: italic; }
-  .line.system .marker { color: var(--paper-dim); }
+  .connect-btn:hover:not(:disabled) {
+    background: var(--cyan-dim);
+    box-shadow: 0 0 24px var(--cyan-glow);
+    transform: translateY(-1px);
+  }
+  .connect-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .connect-btn.connecting {
+    color: var(--text-dim);
+    border-color: var(--line);
+  }
 
-  .keyline {
-    display: flex; align-items: center; gap: 10px; padding: 12px 20px;
-    border-top: 1px solid var(--line); background: var(--panel); flex-shrink: 0;
+  /* Encryption Status */
+  .crypto-status {
+    margin-top: auto;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
   }
-  .keyline .caret { color: var(--amber); font-weight: 700; }
-  .keyline input {
-    flex: 1; background: transparent; border: none; color: var(--paper);
-    font-family: inherit; font-size: 14px; caret-color: var(--amber);
+  .crypto-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-dim);
+    margin-bottom: 8px;
   }
-  .keyline input:focus { outline: none; }
-  .keyline input::placeholder { color: var(--paper-dim); }
-  .keyline button {
-    background: var(--amber); border: none; color: var(--ink); font-family: inherit;
-    font-weight: 700; letter-spacing: 2px; font-size: 12px; padding: 9px 18px;
-    border-radius: 3px; cursor: pointer;
+  .crypto-row:last-child { margin-bottom: 0; }
+  .crypto-val { color: var(--text); font-weight: 600; }
+  .crypto-val.secure { color: var(--cyan); }
+  .crypto-bar {
+    height: 3px;
+    background: var(--void);
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+    position: relative;
   }
-  .keyline button:hover { filter: brightness(1.1); }
-  .keyline button:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+  .crypto-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--cyan), var(--cyan-glow));
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
-  @media (max-width: 640px) {
-    .console { flex-direction: column; }
-    .cell { font-size: 16px; height: 36px; }
+  /* ── Chat Area ── */
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(3, 4, 10, 0.4);
+    position: relative;
+  }
+  .chat-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    color: var(--text-muted);
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+  .chat-empty.hidden { opacity: 0; }
+  .empty-icon {
+    width: 64px;
+    height: 64px;
+    border: 2px solid var(--line);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: var(--text-dim);
+  }
+  .empty-title {
+    font-size: 14px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .empty-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+  .messages::-webkit-scrollbar { width: 6px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 3px;
+  }
+
+  /* Message Bubbles */
+  .msg {
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: msgIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+    position: relative;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); filter: blur(4px); }
+    to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .msg { animation: none; }
+  }
+
+  .msg.mine { align-self: flex-end; align-items: flex-end; }
+  .msg.theirs { align-self: flex-start; align-items: flex-start; }
+  .msg.system { align-self: center; align-items: center; max-width: 90%; }
+
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: var(--radius-lg);
+    font-size: 14px;
+    line-height: 1.55;
+    word-wrap: break-word;
+    position: relative;
+  }
+  .msg.mine .msg-bubble {
+    background: linear-gradient(135deg, rgba(255,184,0,0.1), rgba(255,184,0,0.02));
+    border: 1px solid var(--amber-dim);
+    color: var(--text);
+    border-bottom-right-radius: var(--radius-sm);
+    box-shadow: 0 4px 24px rgba(255,184,0,0.06);
+  }
+  .msg.theirs .msg-bubble {
+    background: linear-gradient(135deg, rgba(0,240,255,0.08), rgba(0,240,255,0.02));
+    border: 1px solid var(--cyan-dim);
+    color: var(--text);
+    border-bottom-left-radius: var(--radius-sm);
+    box-shadow: 0 4px 24px rgba(0,240,255,0.05);
+  }
+  .msg.system .msg-bubble {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 12px;
+    padding: 8px 16px;
+  }
+
+  .msg-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .msg:hover .msg-meta { opacity: 1; }
+
+  /* ── Input Area ── */
+  .composer {
+    padding: 20px 32px 28px;
+    border-top: 1px solid var(--panel-border);
+    background: rgba(10, 11, 20, 0.8);
+    backdrop-filter: blur(12px);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .composer-input-wrap {
+    flex: 1;
+    position: relative;
+  }
+  .composer-input-wrap::before {
+    content: '›';
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--amber);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .composer input {
+    width: 100%;
+    padding: 14px 16px 14px 36px;
+    background: var(--void);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .composer input:focus {
+    outline: none;
+    border-color: var(--amber-dim);
+    box-shadow: 0 0 0 3px var(--amber-dim), inset 0 0 20px rgba(255,184,0,0.03);
+  }
+  .composer input::placeholder { color: var(--text-muted); }
+  .send-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    background: var(--amber);
+    border: none;
+    color: var(--void);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .send-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px var(--amber-glow);
+  }
+  .send-btn:active { transform: scale(0.95); }
+  .send-btn svg { width: 18px; height: 18px; }
+
+  /* ── Mobile ── */
+  @media (max-width: 900px) {
+    .workspace { flex-direction: column; overflow-y: auto; }
+    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--panel-border); padding: 20px; gap: 20px; }
+    .chat-area { min-height: 60vh; }
+    .messages { padding: 16px; }
+    .composer { padding: 16px; }
+    .msg { max-width: 85%; }
+  }
+
+  /* ── Utility ── */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
   }
 </style>
 </head>
 <body>
 
-<header class="bar">
-  <div class="brand"><span class="dot" id="statusDot"></span>CODECHAT<span class="status-text" id="myIdBadge">connecting…</span></div>
-  <div class="clock" id="clock">--:--:--Z</div>
-</header>
+<div class="ambient"></div>
+<div class="scanlines"></div>
 
-<section class="console">
-  <div class="channel-block">
-    <label>Your channel — share with a peer</label>
-    <div class="code-box" id="myIdBox">
-      <div class="cells" data-target="myIdField">
-        <span class="cell"></span><span class="cell"></span><span class="cell"></span>
-        <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-orb" id="statusDot" aria-label="Connection status"></div>
+      <div>
+        <span class="brand-title">CODECHAT</span>
+        <span class="brand-sub" id="myIdBadge">initializing…</span>
       </div>
-      <input id="myIdField" readonly>
     </div>
-  </div>
-  <div class="channel-block">
-    <label>Peer channel</label>
-    <div class="code-entry">
-      <div class="code-box" id="peerIdBox">
-        <div class="cells" data-target="peerIdField">
-          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
-          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+    <div class="topbar-right">
+      <div class="shield-badge" id="shieldBadge" aria-live="polite">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span id="shieldText">IDLE</span>
+      </div>
+      <div class="clock" id="clock">--:--:--Z</div>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div>
+        <div class="panel-title">Your Channel</div>
+        <div class="channel-card">
+          <button class="copy-btn" id="copyBtn" aria-label="Copy channel code">COPY</button>
+          <div class="code-display" id="myIdBox">
+            <div class="code-cell">-</div>
+            <div class="code-cell">-</div>
+            <div class="code-cell">-</div>
+            <div class="code-cell">-</div>
+            <div class="code-cell">-</div>
+            <div class="code-cell">-</div>
+          </div>
+          <div style="margin-top:12px; font-size:11px; color:var(--text-dim); line-height:1.5;">
+            Share this 6-character code with your peer. It resets on every session.
+          </div>
         </div>
-        <input id="peerIdField" maxlength="6">
       </div>
-      <button id="connectBtn">CONNECT</button>
-    </div>
+
+      <div>
+        <div class="panel-title">Peer Channel</div>
+        <div class="peer-entry" id="peerEntry">
+          <div class="input-cells" id="peerIdBox">
+            <div class="cell" data-i="0"></div>
+            <div class="cell" data-i="1"></div>
+            <div class="cell" data-i="2"></div>
+            <div class="cell" data-i="3"></div>
+            <div class="cell" data-i="4"></div>
+            <div class="cell" data-i="5"></div>
+            <div class="code-box">
+              <input id="peerIdField" maxlength="6" autocomplete="off" aria-label="Peer channel code">
+            </div>
+          </div>
+          <button class="connect-btn" id="connectBtn">INITIATE HANDSHAKE</button>
+        </div>
+      </div>
+
+      <div class="crypto-status">
+        <div class="crypto-row">
+          <span>Transport</span>
+          <span class="crypto-val" id="transportStatus">WebSocket</span>
+        </div>
+        <div class="crypto-row">
+          <span>Key Exchange</span>
+          <span class="crypto-val" id="keyStatus">ECDH P-256</span>
+        </div>
+        <div class="crypto-row">
+          <span>Cipher</span>
+          <span class="crypto-val" id="cipherStatus">AES-GCM 256</span>
+        </div>
+        <div class="crypto-bar">
+          <div class="crypto-bar-fill" id="cryptoBar"></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="chat-area">
+      <div class="chat-empty" id="chatEmpty">
+        <div class="empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div class="empty-title">Awaiting Secure Handshake</div>
+        <div class="empty-hint">Enter a peer code and initiate to begin E2E encryption.</div>
+      </div>
+
+      <div class="messages" id="messages" aria-live="polite" aria-atomic="false"></div>
+
+      <div class="composer">
+        <div class="composer-input-wrap">
+          <input id="msgInput" placeholder="Type a secure message…" autocomplete="off" aria-label="Message input">
+        </div>
+        <button class="send-btn" id="sendBtn" aria-label="Send message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </main>
   </div>
-</section>
-
-<div class="log" id="messages"></div>
-
-<div class="keyline">
-  <span class="caret">›</span>
-  <input id="msgInput" placeholder="type message" autocomplete="off">
-  <button id="sendBtn">SEND</button>
 </div>
 
 <script src="app.js"></script>

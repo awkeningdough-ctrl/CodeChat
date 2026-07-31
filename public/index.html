@@ -398,7 +398,6 @@
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Active Users Panel */
   .active-users {
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -593,6 +592,7 @@
     line-height: 1.55;
     word-wrap: break-word;
     position: relative;
+    min-width: 60px;
   }
   .msg.mine .msg-bubble {
     background: linear-gradient(135deg, rgba(255,184,0,0.1), rgba(255,184,0,0.02));
@@ -645,6 +645,140 @@
   }
   .msg:hover .msg-meta { opacity: 1; }
 
+  /* Images */
+  .msg-image {
+    max-width: 260px;
+    max-height: 300px;
+    border-radius: var(--radius-sm);
+    display: block;
+    cursor: pointer;
+    object-fit: cover;
+  }
+  .msg-image:hover { opacity: 0.9; }
+
+  /* Stickers */
+  .msg-sticker {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .msg-sticker svg { width: 100%; height: 100%; }
+
+  /* Voice notes */
+  .msg-voice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 200px;
+  }
+  .voice-play {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--void);
+    border: 1px solid var(--line);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .voice-play:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+  .voice-track {
+    flex: 1;
+    height: 4px;
+    background: var(--void);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+  .voice-progress {
+    height: 100%;
+    width: 0%;
+    background: var(--cyan);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+  }
+  .voice-time {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    min-width: 70px;
+    text-align: right;
+  }
+
+  /* Reactions */
+  .msg-reaction-bar {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .reaction-chip {
+    background: var(--cyan-dim);
+    border: 1px solid var(--cyan-dim);
+    border-radius: 100px;
+    padding: 2px 7px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: default;
+  }
+  .msg-reaction-trigger {
+    position: absolute;
+    bottom: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 14px;
+    padding: 0;
+    z-index: 5;
+  }
+  .msg:hover .msg-reaction-trigger { opacity: 1; }
+  .msg-reaction-trigger:hover {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+  .inline-reactions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: var(--void);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    width: fit-content;
+    animation: msgIn 0.2s ease both;
+  }
+  .inline-emoji {
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px;
+    border-radius: 50%;
+    transition: all 0.2s;
+    line-height: 1;
+  }
+  .inline-emoji:hover {
+    background: var(--cyan-dim);
+    transform: scale(1.25);
+  }
+
   .typing-indicator {
     padding: 4px 32px;
     font-size: 12px;
@@ -684,7 +818,7 @@
     background: rgba(10, 11, 20, 0.8);
     backdrop-filter: blur(12px);
     display: flex;
-    gap: 12px;
+    gap: 10px;
     align-items: center;
     flex-shrink: 0;
     position: relative;
@@ -722,7 +856,7 @@
   }
   .composer input::placeholder { color: var(--text-muted); }
 
-  .sticker-btn {
+  .image-btn, .sticker-btn, .voice-btn {
     width: 44px;
     height: 44px;
     border-radius: var(--radius-md);
@@ -735,18 +869,36 @@
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
-    font-size: 20px;
+  }
+  .image-btn:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: var(--cyan-dim);
   }
   .sticker-btn:hover {
     border-color: var(--amber);
     color: var(--amber);
     background: var(--amber-dim);
-    transform: scale(1.05);
   }
   .sticker-btn.active {
     border-color: var(--amber);
     color: var(--amber);
     background: var(--amber-dim);
+  }
+  .voice-btn:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(255, 77, 77, 0.1);
+  }
+  .voice-btn.recording {
+    background: var(--danger);
+    color: var(--void);
+    border-color: var(--danger);
+    animation: recPulse 1s infinite;
+  }
+  @keyframes recPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
   }
 
   .send-btn {
@@ -806,6 +958,98 @@
     transform: scale(1.1);
   }
 
+  /* Recording Overlay */
+  .recording-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 4, 10, 0.85);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    flex-direction: column;
+  }
+  .recording-overlay.visible { display: flex; }
+  .rec-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    min-width: 320px;
+  }
+  .rec-icon {
+    font-size: 48px;
+    animation: recIconPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes recIconPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+  }
+  .rec-title {
+    font-size: 14px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .rec-waveform {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 40px;
+  }
+  .rec-bar {
+    width: 4px;
+    background: var(--cyan);
+    border-radius: 2px;
+    height: 4px;
+    transition: height 0.05s ease;
+  }
+  .rec-timer {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .rec-controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .rec-cancel, .rec-stop {
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    border: 1px solid var(--line);
+  }
+  .rec-cancel {
+    background: transparent;
+    color: var(--text-dim);
+  }
+  .rec-cancel:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .rec-stop {
+    background: var(--amber-dim);
+    border-color: var(--amber-dim);
+    color: var(--amber);
+  }
+  .rec-stop:hover {
+    background: var(--amber);
+    color: var(--void);
+  }
+
   @media (max-width: 900px) {
     .workspace { flex-direction: column; overflow-y: auto; }
     .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--panel-border); padding: 20px; gap: 20px; }
@@ -814,6 +1058,8 @@
     .composer { padding: 16px; }
     .msg { max-width: 85%; }
     .sticker-picker { left: 16px; right: 16px; }
+    .recording-overlay { padding: 16px; }
+    .rec-panel { min-width: auto; width: 100%; max-width: 400px; }
   }
 
   .sr-only {
@@ -821,6 +1067,7 @@
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
   }
 </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -947,7 +1194,14 @@
         <div class="composer-input-wrap">
           <input id="msgInput" placeholder="Type a secure message…" autocomplete="off" aria-label="Message input">
         </div>
+        <input type="file" id="imageInput" accept="image/*" style="display:none">
+        <button class="image-btn" id="imageBtn" aria-label="Send image">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </button>
         <button class="sticker-btn" id="stickerBtn" aria-label="Open stickers">☺</button>
+        <button class="voice-btn" id="voiceBtn" aria-label="Record voice">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
         <button class="send-btn" id="sendBtn" aria-label="Send message">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -956,6 +1210,33 @@
         </button>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- Recording Overlay -->
+<div class="recording-overlay" id="recordingOverlay">
+  <div class="rec-panel">
+    <div class="rec-icon">🎙</div>
+    <div class="rec-title">Recording Voice Note</div>
+    <div class="rec-waveform">
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+      <div class="rec-bar"></div>
+    </div>
+    <div class="rec-timer" id="recTimer">00:00</div>
+    <div class="rec-controls">
+      <button class="rec-cancel" id="recCancel">Cancel</button>
+      <button class="rec-stop" id="recStop">Stop & Send</button>
+    </div>
   </div>
 </div>
 

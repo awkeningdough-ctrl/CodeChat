@@ -94,6 +94,14 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
@@ -282,8 +290,31 @@ function appendMessageToDOM(m) {
   if (isSticker) {
     const sticker = STICKERS.find(s => s.id === m.sticker);
     bubbleContent = sticker ? `<div class="msg-sticker">${sticker.svg}</div>` : '[sticker]';
-  } else if (isImage) {
-    bubbleContent = `<img class="msg-image" src="${m.imageUrl}" alt="${escapeHtml(m.name || 'image')}" loading="lazy">`;
+  } else if (m.fileUrl) {
+    const type = m.type || '';
+    if (type.startsWith('image/')) {
+      bubbleContent = `<img class="msg-image" src="${m.fileUrl}" alt="${escapeHtml(m.name || 'file')}" loading="lazy">`;
+    } else if (type.startsWith('audio/')) {
+      bubbleContent = `<audio controls style="max-width:260px;" src="${m.fileUrl}"></audio>`;
+    } else if (type.startsWith('video/')) {
+      bubbleContent = `<video controls style="max-width:260px;max-height:300px;border-radius:var(--radius-sm);" src="${m.fileUrl}"></video>`;
+    } else {
+      const sizeStr = m.size ? formatBytes(m.size) : '';
+      bubbleContent = `
+        <div class="file-card">
+          <div class="file-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(m.name || 'file')}</div>
+            <div class="file-meta">${escapeHtml(type)} · ${sizeStr}</div>
+          </div>
+          <a class="file-download" href="${m.fileUrl}" download="${escapeHtml(m.name || 'download')}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </a>
+        </div>
+      `;
+    }
   } else if (isVoice) {
     bubbleContent = `
       <div class="msg-voice">
@@ -618,11 +649,11 @@ async function handleIncomingChat(from, ciphertextRaw) {
     addMessage('peer', 'theirs', inner.text, { id: inner.id });
   } else if (payload.kind === 'sticker') {
     addMessage('peer', 'theirs', '', { sticker: inner.stickerId, id: inner.id });
-  } else if (payload.kind === 'image') {
+  } else if (payload.kind === 'file') {
     const bytes = new Uint8Array(inner.data);
     const blob = new Blob([bytes], { type: inner.type });
     const url = URL.createObjectURL(blob);
-    addMessage('peer', 'theirs', '', { imageUrl: url, name: inner.name, id: inner.id });
+    addMessage('peer', 'theirs', '', { fileUrl: url, name: inner.name, type: inner.type, size: inner.size, id: inner.id });
   } else if (payload.kind === 'voice') {
     const bytes = new Uint8Array(inner.data);
     const blob = new Blob([bytes], { type: 'audio/webm' });
@@ -722,32 +753,32 @@ async function sendSticker(stickerId) {
 }
 
 // ── Image Sharing ──
-el('imageBtn').addEventListener('click', () => {
+el('attachBtn').addEventListener('click', () => {
   if (chatMode !== 'peer') {
-    appendLine('system', 'Images can only be sent in peer mode (E2E encrypted)');
+    appendLine('system', 'Files can only be sent in peer mode (E2E encrypted)');
     return;
   }
-  el('imageInput').click();
+  el('fileInput').click();
 });
 
-el('imageInput').addEventListener('change', async (e) => {
+el('fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  await sendImage(file);
+  await sendFile(file);
   e.target.value = '';
 });
 
-async function sendImage(file) {
+async function sendFile(file) {
   const targetCode = el('peerIdField').value.trim().toUpperCase();
   if (!targetCode) { appendLine('system', 'Enter a peer code first'); return; }
   const peer = peers[targetCode];
   if (!peer || !peer.sharedKey) { appendLine('system', 'No secure channel'); return; }
-  if (file.size > 2 * 1024 * 1024) { appendLine('system', 'Image too large (max 2MB)'); return; }
+  if (file.size > 5 * 1024 * 1024) { appendLine('system', 'File too large (max 5MB)'); return; }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const id = generateId();
   const inner = JSON.stringify({
-    kind: 'image', id, name: file.name, type: file.type,
+    kind: 'file', id, name: file.name, type: file.type, size: file.size,
     data: Array.from(bytes)
   });
 
@@ -762,7 +793,7 @@ async function sendImage(file) {
     type: 'send_chat',
     to: targetCode,
     ciphertext: JSON.stringify({
-      kind: 'image',
+      kind: 'file',
       iv: Array.from(iv),
       data: Array.from(new Uint8Array(encrypted))
     })
@@ -770,7 +801,7 @@ async function sendImage(file) {
 
   const blob = new Blob([bytes], { type: file.type });
   const url = URL.createObjectURL(blob);
-  addMessage('peer', 'mine', '', { imageUrl: url, name: file.name, id });
+  addMessage('peer', 'mine', '', { fileUrl: url, name: file.name, type: file.type, size: file.size, id });
 }
 
 // ── Voice Notes ──
